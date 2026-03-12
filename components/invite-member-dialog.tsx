@@ -70,12 +70,20 @@ export function InviteMemberDialog({
     // Check if user is already a member
     const { data: existingMembers } = await supabase
       .from("group_members")
-      .select("user_id, profiles!inner(email)")
+      .select("user_id")
       .eq("group_id", groupId);
 
-    const memberEmails = existingMembers?.map(
-      (m) => (m.profiles as { email: string }).email.toLowerCase()
-    ) || [];
+    const memberIds = (existingMembers || []).map((member) => member.user_id);
+    const { data: memberProfiles } = memberIds.length
+      ? await supabase
+          .from("profiles")
+          .select("id, email")
+          .in("id", memberIds)
+      : { data: [] as { id: string; email: string }[] };
+
+    const memberEmails = (memberProfiles || []).map((profile) =>
+      profile.email.toLowerCase()
+    );
 
     if (memberEmails.includes(trimmedEmail)) {
       setError("This user is already a member of the group");

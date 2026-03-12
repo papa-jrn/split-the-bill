@@ -15,15 +15,17 @@ interface GroupMemberWithProfile extends GroupMember {
   profiles: Profile;
 }
 
+interface ExpenseSplitWithProfile {
+  id: string;
+  expense_id: string;
+  user_id: string;
+  amount_cents: number;
+  profiles: Profile;
+}
+
 interface ExpenseWithDetails extends Expense {
   profiles: Profile;
-  expense_splits: {
-    id: string;
-    expense_id: string;
-    user_id: string;
-    amount_cents: number;
-    profiles: Profile;
-  }[];
+  expense_splits: ExpenseSplitWithProfile[];
 }
 
 interface GroupPageProps {
@@ -42,7 +44,6 @@ export default async function GroupPage({ params }: GroupPageProps) {
     redirect("/auth/login");
   }
 
-  // Fetch group details
   const { data: group, error } = await supabase
     .from("groups")
     .select("*")
@@ -53,38 +54,54 @@ export default async function GroupPage({ params }: GroupPageProps) {
     notFound();
   }
 
-  // Fetch group members with profiles
-  const { data: members } = await supabase
+  const { data: memberRows } = await supabase
     .from("group_members")
-    .select(
-      `
-      *,
-      profiles (*)
-    `
-    )
+    .select("id, group_id, user_id, role, joined_at")
     .eq("group_id", id)
     .order("joined_at", { ascending: true });
 
-  // Check if current user is a member or the creator
-  const currentMember = members?.find((m) => m.user_id === user.id);
+  const memberIds = (memberRows || []).map((member) => member.user_id);
+  const { data: memberProfiles } = memberIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, email, display_name, created_at")
+        .in("id", memberIds)
+    : { data: [] as Profile[] };
+
+  const profileMap = new Map((memberProfiles || []).map((profile) => [profile.id, profile]));
+  const typedMembers = (memberRows || [])
+    .map((member) => {
+      const profile = profileMap.get(member.user_id);
+      return profile ? ({ ...member, profiles: profile } as GroupMemberWithProfile) : null;
+    })
+    .filter((member): member is GroupMemberWithProfile => member !== null);
+
+  const currentMember = typedMembers.find((member) => member.user_id === user.id);
   const isCreator = group.created_by === user.id;
-  
+
   if (!currentMember && !isCreator) {
     notFound();
   }
 
   const isAdmin = currentMember?.role === "admin" || isCreator;
 
-  // Fetch expenses with paid_by profile and splits
-  const { data: expenses } = await supabase
+  const { data: expenseRows } = await supabase
     .from("expenses")
     .select(
       `
-      *,
-      profiles!expenses_paid_by_fkey (*),
+      id,
+      group_id,
+      description,
+      amount_cents,
+      paid_by,
+      created_by,
+      expense_date,
+      created_at,
       expense_splits (
-        *,
-        profiles (*)
+        id,
+        expense_id,
+        user_id,
+        amount_cents
       )
     `
     )
@@ -92,7 +109,45 @@ export default async function GroupPage({ params }: GroupPageProps) {
     .order("expense_date", { ascending: false })
     .order("created_at", { ascending: false });
 
-  // Fetch pending invites for this group (only if admin)
+  const expenseProfileIds = Array.from(
+    new Set(
+      (expenseRows || []).flatMap((expense) => [
+        expense.paid_by,
+        ...((expense.expense_splits || []).map((split) => split.user_id)),
+      ])
+    )
+  );
+
+  const { data: expenseProfiles } = expenseProfileIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, email, display_name, created_at")
+        .in("id", expenseProfileIds)
+    : { data: [] as Profile[] };
+
+  const expenseProfileMap = new Map((expenseProfiles || []).map((profile) => [profile.id, profile]));
+  const typedExpenses = (expenseRows || [])
+    .map((expense) => {
+      const paidByProfile = expenseProfileMap.get(expense.paid_by);
+      if (!paidByProfile) {
+        return null;
+      }
+
+      const splits = (expense.expense_splits || [])
+        .map((split) => {
+          const profile = expenseProfileMap.get(split.user_id);
+          return profile ? ({ ...split, profiles: profile } as ExpenseSplitWithProfile) : null;
+        })
+        .filter((split): split is ExpenseSplitWithProfile => split !== null);
+
+      return {
+        ...expense,
+        profiles: paidByProfile,
+        expense_splits: splits,
+      } as ExpenseWithDetails;
+    })
+    .filter((expense): expense is ExpenseWithDetails => expense !== null);
+
   let invites: { id: string; email: string; created_at: string }[] = [];
   if (isAdmin) {
     const { data } = await supabase
@@ -101,9 +156,6 @@ export default async function GroupPage({ params }: GroupPageProps) {
       .eq("group_id", id);
     invites = data || [];
   }
-
-  const typedMembers = (members || []) as GroupMemberWithProfile[];
-  const typedExpenses = (expenses || []) as ExpenseWithDetails[];
 
   return (
     <div className="space-y-6">

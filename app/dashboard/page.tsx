@@ -23,13 +23,10 @@ export default async function DashboardPage() {
       *,
       group_members (
         id,
+        group_id,
         user_id,
         role,
-        profiles (
-          id,
-          display_name,
-          email
-        )
+        joined_at
       )
     `
     )
