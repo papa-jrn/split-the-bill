@@ -1,0 +1,6 @@
+# Ignore old astro files
+src/
+src/**
+
+# Ignore scripts (not needed for build)
+scripts/
