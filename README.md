@@ -43,3 +43,16 @@ npm run dev
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL`
+- `NEXT_PUBLIC_APP_URL`
+- `RESEND_API_KEY`
+- `INVITE_FROM_EMAIL`
+
+## Email invites
+
+Set up a [Resend](https://resend.com) API key and a verified sender address, then add these Vercel environment variables:
+
+- `NEXT_PUBLIC_APP_URL`
+- `RESEND_API_KEY`
+- `INVITE_FROM_EMAIL`
+
+When you invite a brand new email address, the app will store the invite in `group_invites`, send an email, and automatically attach the user to the group after they sign up with that same email.

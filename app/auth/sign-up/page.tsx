@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,13 @@ export default function SignUpPage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    const invitedEmail = new URLSearchParams(window.location.search).get("email");
+    if (invitedEmail) {
+      setEmail(invitedEmail);
+    }
+  }, []);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

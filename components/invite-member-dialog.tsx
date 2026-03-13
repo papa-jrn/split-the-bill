@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +31,7 @@ export function InviteMemberDialog({
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,104 +39,68 @@ export function InviteMemberDialog({
 
     if (!trimmedEmail) {
       setError("Email is required");
+      setSuccess("");
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       setError("Please enter a valid email address");
+      setSuccess("");
       return;
     }
 
-    // Check if already invited
     if (existingInvites.some((inv) => inv.email.toLowerCase() === trimmedEmail)) {
       setError("This email has already been invited");
+      setSuccess("");
       return;
     }
 
     setLoading(true);
     setError("");
+    setSuccess("");
 
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const response = await fetch("/api/invites", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: trimmedEmail,
+        groupId,
+      }),
+    });
 
-    if (!user) {
-      setError("You must be logged in");
+    const result = (await response.json()) as { error?: string; mode?: "added" | "invited" };
+
+    if (!response.ok) {
+      setError(result.error || "Something went wrong while sending the invite.");
       setLoading(false);
       return;
     }
 
-    // Check if user is already a member
-    const { data: existingMembers } = await supabase
-      .from("group_members")
-      .select("user_id")
-      .eq("group_id", groupId);
-
-    const memberIds = (existingMembers || []).map((member) => member.user_id);
-    const { data: memberProfiles } = memberIds.length
-      ? await supabase
-          .from("profiles")
-          .select("id, email")
-          .in("id", memberIds)
-      : { data: [] as { id: string; email: string }[] };
-
-    const memberEmails = (memberProfiles || []).map((profile) =>
-      profile.email.toLowerCase()
+    setSuccess(
+      result.mode === "added"
+        ? "This user already had an account and was added to the group."
+        : "Invitation email sent successfully."
     );
-
-    if (memberEmails.includes(trimmedEmail)) {
-      setError("This user is already a member of the group");
-      setLoading(false);
-      return;
-    }
-
-    // Check if the user already exists in our system
-    const { data: existingProfile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", trimmedEmail)
-      .single();
-
-    if (existingProfile) {
-      // User exists, add them directly to the group
-      const { error: memberError } = await supabase
-        .from("group_members")
-        .insert({
-          group_id: groupId,
-          user_id: existingProfile.id,
-          role: "member",
-        });
-
-      if (memberError) {
-        setError(memberError.message);
-        setLoading(false);
-        return;
-      }
-    } else {
-      // User doesn't exist, create an invite
-      const { error: inviteError } = await supabase
-        .from("group_invites")
-        .insert({
-          group_id: groupId,
-          email: trimmedEmail,
-          invited_by: user.id,
-        });
-
-      if (inviteError) {
-        setError(inviteError.message);
-        setLoading(false);
-        return;
-      }
-    }
-
-    setOpen(false);
     setEmail("");
+    setLoading(false);
     router.refresh();
+    setTimeout(() => setOpen(false), 800);
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) {
+      setError("");
+      setSuccess("");
+      setEmail("");
+      setLoading(false);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline">
           <UserPlus className="mr-2 h-4 w-4" />
@@ -148,9 +112,10 @@ export function InviteMemberDialog({
           <DialogHeader>
             <DialogTitle>Invite a member</DialogTitle>
             <DialogDescription>
-              Invite someone to join this group by their email address. If they
-              already have an account, they will be added immediately.
-              Otherwise, they will see an invitation when they sign up.
+              Invite someone to join this group by email. If they already have
+              an account, they will be added immediately. Otherwise, we will
+              email them a sign-up link and connect the invite automatically
+              after they register.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="py-4">
@@ -166,6 +131,7 @@ export function InviteMemberDialog({
               />
             </Field>
             {error && <p className="text-sm text-destructive">{error}</p>}
+            {success && <p className="text-sm text-emerald-600">{success}</p>}
           </FieldGroup>
           <DialogFooter>
             <Button
