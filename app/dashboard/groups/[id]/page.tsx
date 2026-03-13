@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { unstable_noStore as noStore } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -20,11 +21,11 @@ interface ExpenseSplitWithProfile {
   expense_id: string;
   user_id: string;
   amount_cents: number;
-  profiles: Profile;
+  profiles?: Profile;
 }
 
 interface ExpenseWithDetails extends Expense {
-  profiles: Profile;
+  profiles?: Profile;
   expense_splits: ExpenseSplitWithProfile[];
 }
 
@@ -33,6 +34,7 @@ interface GroupPageProps {
 }
 
 export default async function GroupPage({ params }: GroupPageProps) {
+  noStore();
   const { id } = await params;
   const supabase = await createClient();
 
@@ -124,27 +126,14 @@ export default async function GroupPage({ params }: GroupPageProps) {
     : { data: [] as Profile[] };
 
   const expenseProfileMap = new Map((expenseProfiles || []).map((profile) => [profile.id, profile]));
-  const typedExpenses = (expenseRows || [])
-    .map((expense) => {
-      const paidByProfile = expenseProfileMap.get(expense.paid_by);
-      if (!paidByProfile) {
-        return null;
-      }
-
-      const splits = (expense.expense_splits || [])
-        .map((split) => {
-          const profile = expenseProfileMap.get(split.user_id);
-          return profile ? ({ ...split, profiles: profile } as ExpenseSplitWithProfile) : null;
-        })
-        .filter((split): split is ExpenseSplitWithProfile => split !== null);
-
-      return {
-        ...expense,
-        profiles: paidByProfile,
-        expense_splits: splits,
-      } as ExpenseWithDetails;
-    })
-    .filter((expense): expense is ExpenseWithDetails => expense !== null);
+  const typedExpenses = (expenseRows || []).map((expense) => ({
+    ...expense,
+    profiles: expenseProfileMap.get(expense.paid_by),
+    expense_splits: (expense.expense_splits || []).map((split) => ({
+      ...split,
+      profiles: expenseProfileMap.get(split.user_id),
+    })),
+  })) as ExpenseWithDetails[];
 
   let invites: { id: string; email: string; created_at: string }[] = [];
   if (isAdmin) {

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { unstable_noStore as noStore } from "next/cache";
 import { GroupCard } from "@/components/group-card";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
 import { PendingInvites } from "@/components/pending-invites";
@@ -10,6 +11,7 @@ interface GroupWithMembers extends Group {
 }
 
 export default async function DashboardPage() {
+  noStore();
   const supabase = await createClient();
   const {
     data: { user },

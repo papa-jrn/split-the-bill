@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { unstable_noStore as noStore } from "next/cache";
 import { redirect } from "next/navigation";
 import { DashboardNav } from "@/components/dashboard-nav";
 import { acceptPendingInvitesForUser } from "@/lib/supabase/pending-invites";
@@ -8,6 +9,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  noStore();
   const supabase = await createClient();
   const {
     data: { user },
