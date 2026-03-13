@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { DashboardNav } from "@/components/dashboard-nav";
+import { acceptPendingInvitesForUser } from "@/lib/supabase/pending-invites";
 
 export default async function DashboardLayout({
   children,
@@ -15,6 +16,8 @@ export default async function DashboardLayout({
   if (!user) {
     redirect("/auth/login");
   }
+
+  await acceptPendingInvitesForUser(supabase, user);
 
   const { data: profile } = await supabase
     .from("profiles")
