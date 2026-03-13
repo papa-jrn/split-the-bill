@@ -17,6 +17,10 @@ npm install
 ```text
 scripts/001_create_tables.sql
 scripts/002_profile_trigger.sql
+scripts/003_fix_rls_policies.sql
+scripts/004_fix_group_visibility.sql
+scripts/005_backfill_profiles_and_memberships.sql
+scripts/006_fix_profile_visibility.sql
 ```
 
 4. In Supabase Authentication settings, add this redirect URL:
@@ -56,3 +60,7 @@ Set up a [Resend](https://resend.com) API key and a verified sender address, the
 - `INVITE_FROM_EMAIL`
 
 When you invite a brand new email address, the app will store the invite in `group_invites`, send an email, and automatically attach the user to the group after they sign up with that same email.
+
+## Existing projects
+
+If you already ran only the first two SQL files in Supabase, apply `003` through `006` in order to bring your database up to the current working policy set.
