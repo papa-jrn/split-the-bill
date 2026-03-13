@@ -13,6 +13,7 @@ import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { ArrowRight, TrendingUp, TrendingDown, Scale } from "lucide-react";
 import { formatCurrency } from "@/lib/types";
 import type { Expense, GroupMember, Profile } from "@/lib/types";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 interface ExpenseWithDetails extends Expense {
   profiles: Profile;
@@ -26,7 +27,7 @@ interface ExpenseWithDetails extends Expense {
 }
 
 interface GroupMemberWithProfile extends GroupMember {
-  profiles: Profile;
+  profiles?: Profile;
 }
 
 interface GroupBalancesProps {
@@ -71,8 +72,7 @@ function calculateBalances(
 
   // Convert to array with names
   return members.map((member) => {
-    const name =
-      member.profiles.display_name || member.profiles.email.split("@")[0];
+    const name = getMemberDisplayName(member.user_id, member.profiles);
     return {
       userId: member.user_id,
       name,

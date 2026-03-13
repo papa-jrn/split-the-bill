@@ -12,7 +12,7 @@ import { ArrowLeft } from "lucide-react";
 import type { Group, GroupMember, Expense, Profile } from "@/lib/types";
 
 interface GroupMemberWithProfile extends GroupMember {
-  profiles: Profile;
+  profiles?: Profile;
 }
 
 interface ExpenseSplitWithProfile {
@@ -69,14 +69,12 @@ export default async function GroupPage({ params }: GroupPageProps) {
     : { data: [] as Profile[] };
 
   const profileMap = new Map((memberProfiles || []).map((profile) => [profile.id, profile]));
-  const typedMembers = (memberRows || [])
-    .map((member) => {
-      const profile = profileMap.get(member.user_id);
-      return profile ? ({ ...member, profiles: profile } as GroupMemberWithProfile) : null;
-    })
-    .filter((member): member is GroupMemberWithProfile => member !== null);
+  const typedMembers = (memberRows || []).map((member) => ({
+    ...member,
+    profiles: profileMap.get(member.user_id),
+  })) as GroupMemberWithProfile[];
 
-  const currentMember = typedMembers.find((member) => member.user_id === user.id);
+  const currentMember = (memberRows || []).find((member) => member.user_id === user.id);
   const isCreator = group.created_by === user.id;
 
   if (!currentMember && !isCreator) {

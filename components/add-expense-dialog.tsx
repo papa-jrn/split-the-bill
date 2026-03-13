@@ -27,9 +27,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { Plus } from "lucide-react";
 import { parseCurrency } from "@/lib/types";
 import type { GroupMember, Profile } from "@/lib/types";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 interface GroupMemberWithProfile extends GroupMember {
-  profiles: Profile;
+  profiles?: Profile;
 }
 
 interface AddExpenseDialogProps {
@@ -214,9 +215,7 @@ export function AddExpenseDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {members.map((member) => {
-                    const name =
-                      member.profiles.display_name ||
-                      member.profiles.email.split("@")[0];
+                    const name = getMemberDisplayName(member.user_id, member.profiles);
                     return (
                       <SelectItem key={member.user_id} value={member.user_id}>
                         {name}
@@ -231,9 +230,7 @@ export function AddExpenseDialog({
               <FieldLabel>Split among</FieldLabel>
               <div className="space-y-2 rounded-lg border p-3">
                 {members.map((member) => {
-                  const name =
-                    member.profiles.display_name ||
-                    member.profiles.email.split("@")[0];
+                  const name = getMemberDisplayName(member.user_id, member.profiles);
                   const isChecked = splitAmong.includes(member.user_id);
                   return (
                     <label

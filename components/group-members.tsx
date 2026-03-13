@@ -16,9 +16,10 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Trash2, Clock } from "lucide-react";
 import type { GroupMember, Profile } from "@/lib/types";
+import { getMemberDisplayName, getMemberEmail } from "@/lib/member-display";
 
 interface GroupMemberWithProfile extends GroupMember {
-  profiles: Profile;
+  profiles?: Profile;
 }
 
 interface GroupMembersProps {
@@ -72,9 +73,7 @@ export function GroupMembers({
       </CardHeader>
       <CardContent className="space-y-3">
         {members.map((member) => {
-          const name =
-            member.profiles.display_name ||
-            member.profiles.email.split("@")[0];
+          const name = getMemberDisplayName(member.user_id, member.profiles);
           const initials = name.slice(0, 2).toUpperCase();
           const isCurrentUser = member.user_id === currentUserId;
 
@@ -97,7 +96,7 @@ export function GroupMembers({
                     )}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {member.profiles.email}
+                    {getMemberEmail(member.profiles)}
                   </p>
                 </div>
               </div>

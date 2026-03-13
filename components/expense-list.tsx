@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/types";
+import { getMemberDisplayName } from "@/lib/member-display";
 import type { Expense, GroupMember, Profile } from "@/lib/types";
 
 interface ExpenseWithDetails extends Expense {
@@ -123,18 +124,14 @@ export function ExpenseList({
             {formatDate(date)}
           </h3>
           {dateExpenses.map((expense) => {
-            const paidByName =
-              expense.profiles.display_name ||
-              expense.profiles.email.split("@")[0];
+            const paidByName = getMemberDisplayName(expense.paid_by, expense.profiles);
             const paidByInitials = paidByName.slice(0, 2).toUpperCase();
             const isPaidByCurrentUser = expense.paid_by === currentUserId;
             const canDelete = expense.created_by === currentUserId;
 
             const splitNames = expense.expense_splits
               .map((split) => {
-                const name =
-                  split.profiles.display_name ||
-                  split.profiles.email.split("@")[0];
+                const name = getMemberDisplayName(split.user_id, split.profiles);
                 return split.user_id === currentUserId ? "you" : name;
               })
               .join(", ");
