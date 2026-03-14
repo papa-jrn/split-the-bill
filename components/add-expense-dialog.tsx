@@ -24,6 +24,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Plus } from "lucide-react";
 import { parseCurrency } from "@/lib/types";
 import type { GroupMember, Profile } from "@/lib/types";
@@ -33,10 +34,16 @@ interface GroupMemberWithProfile extends GroupMember {
   profiles?: Profile;
 }
 
+type SplitMode = "equal" | "exact";
+
 interface AddExpenseDialogProps {
   groupId: string;
   members: GroupMemberWithProfile[];
   currentUserId: string;
+}
+
+function getInitialExactSplits(members: GroupMemberWithProfile[]) {
+  return Object.fromEntries(members.map((member) => [member.user_id, ""]));
 }
 
 export function AddExpenseDialog({
@@ -50,8 +57,12 @@ export function AddExpenseDialog({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(currentUserId);
+  const [splitMode, setSplitMode] = useState<SplitMode>("equal");
   const [splitAmong, setSplitAmong] = useState<string[]>(
     members.map((m) => m.user_id)
+  );
+  const [exactSplits, setExactSplits] = useState<Record<string, string>>(
+    getInitialExactSplits(members)
   );
   const [expenseDate, setExpenseDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -65,6 +76,54 @@ export function AddExpenseDialog({
         : [...prev, userId]
     );
   };
+
+  const handleExactSplitChange = (userId: string, value: string) => {
+    setExactSplits((prev) => ({
+      ...prev,
+      [userId]: value,
+    }));
+  };
+
+  const fillExactSplitsFromEqual = (amountValue: string) => {
+    const amountCents = parseCurrency(amountValue);
+    const selectedMembers = splitAmong.length > 0 ? splitAmong : members.map((member) => member.user_id);
+
+    if (amountCents <= 0 || selectedMembers.length === 0) {
+      setExactSplits(getInitialExactSplits(members));
+      return;
+    }
+
+    const baseAmount = Math.floor(amountCents / selectedMembers.length);
+    const remainder = amountCents % selectedMembers.length;
+
+    const nextSplits = getInitialExactSplits(members);
+    selectedMembers.forEach((userId, index) => {
+      const cents = baseAmount + (index < remainder ? 1 : 0);
+      nextSplits[userId] = (cents / 100).toFixed(2);
+    });
+
+    setExactSplits(nextSplits);
+  };
+
+  const handleSplitModeChange = (value: string) => {
+    const nextMode = value as SplitMode;
+    setSplitMode(nextMode);
+    if (nextMode === "exact") {
+      fillExactSplitsFromEqual(amount);
+    }
+  };
+
+  const exactSplitEntries = members
+    .map((member) => ({
+      userId: member.user_id,
+      amountCents: parseCurrency(exactSplits[member.user_id] || ""),
+    }))
+    .filter((entry) => entry.amountCents > 0);
+
+  const exactSplitTotal = exactSplitEntries.reduce(
+    (sum, entry) => sum + entry.amountCents,
+    0
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,9 +139,34 @@ export function AddExpenseDialog({
       return;
     }
 
-    if (splitAmong.length === 0) {
-      setError("Select at least one person to split with");
-      return;
+    let splits: { user_id: string; amount_cents: number }[] = [];
+
+    if (splitMode === "equal") {
+      if (splitAmong.length === 0) {
+        setError("Select at least one person to split with");
+        return;
+      }
+
+      const splitCount = splitAmong.length;
+      const baseAmount = Math.floor(amountCents / splitCount);
+      const remainder = amountCents % splitCount;
+
+      splits = splitAmong.map((userId, index) => ({
+        user_id: userId,
+        amount_cents: baseAmount + (index < remainder ? 1 : 0),
+      }));
+    } else {
+      if (exactSplitEntries.length === 0) {
+        setError("Enter at least one split amount");
+        return;
+      }
+
+      if (exactSplitTotal !== amountCents) {
+        setError("Exact split amounts must add up to the total expense");
+        return;
+      }
+
+      splits = exactSplitEntries;
     }
 
     setLoading(true);
@@ -90,7 +174,6 @@ export function AddExpenseDialog({
 
     const supabase = createClient();
 
-    // Create the expense
     const { data: expense, error: expenseError } = await supabase
       .from("expenses")
       .insert({
@@ -110,25 +193,17 @@ export function AddExpenseDialog({
       return;
     }
 
-    // Calculate split amounts (equal split)
-    const splitCount = splitAmong.length;
-    const baseAmount = Math.floor(amountCents / splitCount);
-    const remainder = amountCents % splitCount;
-
-    // Create expense splits
-    const splits = splitAmong.map((userId, index) => ({
-      expense_id: expense.id,
-      user_id: userId,
-      // Distribute remainder cents to first few people
-      amount_cents: baseAmount + (index < remainder ? 1 : 0),
-    }));
-
     const { error: splitsError } = await supabase
       .from("expense_splits")
-      .insert(splits);
+      .insert(
+        splits.map((split) => ({
+          expense_id: expense.id,
+          user_id: split.user_id,
+          amount_cents: split.amount_cents,
+        }))
+      );
 
     if (splitsError) {
-      // Rollback expense if splits fail
       await supabase.from("expenses").delete().eq("id", expense.id);
       setError(splitsError.message);
       setLoading(false);
@@ -139,7 +214,9 @@ export function AddExpenseDialog({
     setDescription("");
     setAmount("");
     setPaidBy(currentUserId);
+    setSplitMode("equal");
     setSplitAmong(members.map((m) => m.user_id));
+    setExactSplits(getInitialExactSplits(members));
     setExpenseDate(new Date().toISOString().split("T")[0]);
     router.refresh();
   };
@@ -147,8 +224,10 @@ export function AddExpenseDialog({
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen);
     if (isOpen) {
-      // Reset form when opening
+      setSplitMode("equal");
       setSplitAmong(members.map((m) => m.user_id));
+      setExactSplits(getInitialExactSplits(members));
+      setError("");
     }
   };
 
@@ -165,7 +244,7 @@ export function AddExpenseDialog({
           <DialogHeader>
             <DialogTitle>Add an expense</DialogTitle>
             <DialogDescription>
-              Record a new expense and split it among group members.
+              Record a new expense and choose how to split it across the group.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="py-4">
@@ -227,34 +306,102 @@ export function AddExpenseDialog({
               </Select>
             </Field>
             <Field>
-              <FieldLabel>Split among</FieldLabel>
-              <div className="space-y-2 rounded-lg border p-3">
-                {members.map((member) => {
-                  const name = getMemberDisplayName(member.user_id, member.profiles);
-                  const isChecked = splitAmong.includes(member.user_id);
-                  return (
-                    <label
-                      key={member.user_id}
-                      className="flex items-center gap-3 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={isChecked}
-                        onCheckedChange={() => handleToggleMember(member.user_id)}
-                        disabled={loading}
-                      />
-                      <span className="text-sm">
-                        {name}
-                        {member.user_id === currentUserId && " (you)"}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {splitAmong.length > 0 &&
-                  `Split equally: ${parseCurrency(amount) > 0 ? `$${(parseCurrency(amount) / splitAmong.length / 100).toFixed(2)} each` : ""}`}
-              </p>
+              <FieldLabel>Split mode</FieldLabel>
+              <RadioGroup
+                value={splitMode}
+                onValueChange={handleSplitModeChange}
+                className="gap-3"
+              >
+                <label className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer">
+                  <RadioGroupItem value="equal" />
+                  <div>
+                    <p className="text-sm font-medium">Equal</p>
+                    <p className="text-xs text-muted-foreground">
+                      Split evenly among the selected members.
+                    </p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer">
+                  <RadioGroupItem value="exact" />
+                  <div>
+                    <p className="text-sm font-medium">Exact</p>
+                    <p className="text-xs text-muted-foreground">
+                      Enter a specific amount for each person.
+                    </p>
+                  </div>
+                </label>
+              </RadioGroup>
             </Field>
+            {splitMode === "equal" ? (
+              <Field>
+                <FieldLabel>Split among</FieldLabel>
+                <div className="space-y-2 rounded-lg border p-3">
+                  {members.map((member) => {
+                    const name = getMemberDisplayName(member.user_id, member.profiles);
+                    const isChecked = splitAmong.includes(member.user_id);
+                    return (
+                      <label
+                        key={member.user_id}
+                        className="flex items-center gap-3 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={() => handleToggleMember(member.user_id)}
+                          disabled={loading}
+                        />
+                        <span className="text-sm">
+                          {name}
+                          {member.user_id === currentUserId && " (you)"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {splitAmong.length > 0 && parseCurrency(amount) > 0
+                    ? `Split equally: $${(parseCurrency(amount) / splitAmong.length / 100).toFixed(2)} each`
+                    : "Choose at least one member to split this expense with."}
+                </p>
+              </Field>
+            ) : (
+              <Field>
+                <FieldLabel>Exact amounts</FieldLabel>
+                <div className="space-y-3 rounded-lg border p-3">
+                  {members.map((member) => {
+                    const name = getMemberDisplayName(member.user_id, member.profiles);
+                    return (
+                      <div key={member.user_id} className="space-y-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm">
+                            {name}
+                            {member.user_id === currentUserId && " (you)"}
+                          </span>
+                          <div className="relative w-28">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                              $
+                            </span>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              className="pl-7"
+                              placeholder="0.00"
+                              value={exactSplits[member.user_id] || ""}
+                              onChange={(e) =>
+                                handleExactSplitChange(member.user_id, e.target.value)
+                              }
+                              disabled={loading}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Total assigned: ${(exactSplitTotal / 100).toFixed(2)} / ${(parseCurrency(amount) / 100).toFixed(2)}
+                </p>
+              </Field>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
           </FieldGroup>
           <DialogFooter>
