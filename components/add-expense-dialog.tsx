@@ -115,13 +115,13 @@ export function AddExpenseDialog({
 
   const exactSplitEntries = members
     .map((member) => ({
-      userId: member.user_id,
-      amountCents: parseCurrency(exactSplits[member.user_id] || ""),
+      user_id: member.user_id,
+      amount_cents: parseCurrency(exactSplits[member.user_id] || ""),
     }))
-    .filter((entry) => entry.amountCents > 0);
+    .filter((entry) => entry.amount_cents > 0);
 
   const exactSplitTotal = exactSplitEntries.reduce(
-    (sum, entry) => sum + entry.amountCents,
+    (sum, entry) => sum + entry.amount_cents,
     0
   );
 
