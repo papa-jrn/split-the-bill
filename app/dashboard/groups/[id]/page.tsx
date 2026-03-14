@@ -9,8 +9,9 @@ import { AddExpenseDialog } from "@/components/add-expense-dialog";
 import { GroupMembers } from "@/components/group-members";
 import { GroupBalances } from "@/components/group-balances";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
+import { GroupMessageBoard } from "@/components/group-message-board";
 import { ArrowLeft } from "lucide-react";
-import type { Group, GroupMember, Expense, Profile } from "@/lib/types";
+import type { Group, GroupMember, Expense, GroupMessage, Profile } from "@/lib/types";
 
 interface GroupMemberWithProfile extends GroupMember {
   profiles?: Profile;
@@ -27,6 +28,10 @@ interface ExpenseSplitWithProfile {
 interface ExpenseWithDetails extends Expense {
   profiles?: Profile;
   expense_splits: ExpenseSplitWithProfile[];
+}
+
+interface GroupMessageWithProfile extends GroupMessage {
+  profiles?: Profile;
 }
 
 interface GroupPageProps {
@@ -135,6 +140,30 @@ export default async function GroupPage({ params }: GroupPageProps) {
     })),
   })) as ExpenseWithDetails[];
 
+  const { data: messageRows } = await supabase
+    .from("group_messages")
+    .select("id, group_id, user_id, body, created_at")
+    .eq("group_id", id)
+    .order("created_at", { ascending: true });
+
+  const messageProfileIds = Array.from(
+    new Set((messageRows || []).map((message) => message.user_id))
+  );
+  const { data: messageProfiles } = messageProfileIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, email, display_name, created_at")
+        .in("id", messageProfileIds)
+    : { data: [] as Profile[] };
+
+  const messageProfileMap = new Map(
+    (messageProfiles || []).map((profile) => [profile.id, profile])
+  );
+  const typedMessages = (messageRows || []).map((message) => ({
+    ...message,
+    profiles: messageProfileMap.get(message.user_id),
+  })) as GroupMessageWithProfile[];
+
   let invites: { id: string; email: string; created_at: string }[] = [];
   if (isAdmin) {
     const { data } = await supabase
@@ -166,6 +195,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
             <TabsTrigger value="expenses">Expenses</TabsTrigger>
             <TabsTrigger value="balances">Balances</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
+            <TabsTrigger value="messages">Messages</TabsTrigger>
           </TabsList>
           <div className="flex gap-2">
             {isAdmin && (
@@ -204,6 +234,14 @@ export default async function GroupPage({ params }: GroupPageProps) {
             isAdmin={isAdmin}
             groupId={id}
             pendingInvites={invites}
+          />
+        </TabsContent>
+
+        <TabsContent value="messages" className="space-y-4">
+          <GroupMessageBoard
+            groupId={id}
+            currentUserId={user.id}
+            messages={typedMessages}
           />
         </TabsContent>
       </Tabs>

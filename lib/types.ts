@@ -30,6 +30,15 @@ export interface GroupInvite {
   created_at: string;
 }
 
+export interface GroupMessage {
+  id: string;
+  group_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  profiles?: Profile;
+}
+
 export interface Expense {
   id: string;
   group_id: string;
