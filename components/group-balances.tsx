@@ -40,6 +40,7 @@ interface GroupBalancesProps {
   members: GroupMemberWithProfile[];
   groupId: string;
   currentUserId: string;
+  isArchived?: boolean;
 }
 
 interface Balance {
@@ -124,6 +125,7 @@ export function GroupBalances({
   members,
   groupId,
   currentUserId,
+  isArchived = false,
 }: GroupBalancesProps) {
   const router = useRouter();
   const [recordingKey, setRecordingKey] = useState<string | null>(null);
@@ -274,7 +276,7 @@ export function GroupBalances({
                         type="button"
                         variant="outline"
                         onClick={() => handleRecordSettlement(settlement)}
-                        disabled={isRecording}
+                        disabled={isRecording || isArchived}
                       >
                         {isRecording && <Spinner className="mr-2" />}
                         Record as settled
@@ -303,6 +305,11 @@ export function GroupBalances({
                 );
               })}
             </div>
+            {isArchived && (
+              <p className="mt-4 text-sm text-muted-foreground">
+                This group is archived, so suggested payments are view-only until the group is unarchived.
+              </p>
+            )}
             {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           </CardContent>
         </Card>

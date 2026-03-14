@@ -9,6 +9,7 @@ import { AddExpenseDialog } from "@/components/add-expense-dialog";
 import { GroupMembers } from "@/components/group-members";
 import { GroupBalances } from "@/components/group-balances";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
+import { GroupArchiveToggle } from "@/components/group-archive-toggle";
 import { GroupMessageBoard } from "@/components/group-message-board";
 import { ArrowLeft } from "lucide-react";
 import type { Group, GroupMember, Expense, GroupMessage, Profile } from "@/lib/types";
@@ -182,12 +183,26 @@ export default async function GroupPage({ params }: GroupPageProps) {
           </Link>
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{group.name}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight">{group.name}</h1>
+            {group.archived_at && (
+              <span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                Archived
+              </span>
+            )}
+          </div>
           {group.description && (
             <p className="text-muted-foreground">{group.description}</p>
           )}
         </div>
+        {isAdmin && <GroupArchiveToggle groupId={id} isArchived={Boolean(group.archived_at)} />}
       </div>
+
+      {group.archived_at && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+          This group is archived. You can still review expenses, balances, and messages, but adding new expenses or recording settlements is disabled until you unarchive it.
+        </div>
+      )}
 
       <Tabs defaultValue="expenses" className="space-y-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -205,6 +220,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
               groupId={id}
               members={typedMembers}
               currentUserId={user.id}
+              disabled={Boolean(group.archived_at)}
             />
           </div>
         </div>
@@ -224,6 +240,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
             members={typedMembers}
             groupId={id}
             currentUserId={user.id}
+            isArchived={Boolean(group.archived_at)}
           />
         </TabsContent>
 

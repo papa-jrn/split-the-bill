@@ -22,6 +22,7 @@ scripts/004_fix_group_visibility.sql
 scripts/005_backfill_profiles_and_memberships.sql
 scripts/006_fix_profile_visibility.sql
 scripts/007_add_group_messages.sql
+scripts/008_add_group_archiving.sql
 ```
 
 4. In Supabase Authentication settings, add this redirect URL:

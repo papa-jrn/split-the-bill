@@ -32,11 +32,18 @@ export function GroupCard({ group, currentUserId }: GroupCardProps) {
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-2">
             <CardTitle className="text-xl line-clamp-1">{group.name}</CardTitle>
-            {isAdmin && (
-              <Badge variant="secondary" className="shrink-0">
-                Admin
-              </Badge>
-            )}
+            <div className="flex gap-2">
+              {group.archived_at && (
+                <Badge variant="outline" className="shrink-0">
+                  Archived
+                </Badge>
+              )}
+              {isAdmin && (
+                <Badge variant="secondary" className="shrink-0">
+                  Admin
+                </Badge>
+              )}
+            </div>
           </div>
           {group.description && (
             <CardDescription className="line-clamp-2">

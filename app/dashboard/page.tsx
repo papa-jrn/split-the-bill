@@ -55,6 +55,8 @@ export default async function DashboardPage() {
     .eq("email", profile?.email || "");
 
   const typedGroups = (groups || []) as GroupWithMembers[];
+  const activeGroups = typedGroups.filter((group) => !group.archived_at);
+  const archivedGroups = typedGroups.filter((group) => group.archived_at);
 
   return (
     <div className="space-y-8">
@@ -83,10 +85,52 @@ export default async function DashboardPage() {
           </div>
         </Empty>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {typedGroups.map((group) => (
-            <GroupCard key={group.id} group={group} currentUserId={user!.id} />
-          ))}
+        <div className="space-y-8">
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Active Groups</h2>
+              <p className="text-sm text-muted-foreground">
+                Current groups where you can keep adding expenses and settlements.
+              </p>
+            </div>
+            {activeGroups.length === 0 ? (
+              <Empty>
+                <EmptyTitle>No active groups</EmptyTitle>
+                <EmptyDescription>
+                  Archive history is available below. Create a new group or unarchive an old one to get started again.
+                </EmptyDescription>
+              </Empty>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {activeGroups.map((group) => (
+                  <GroupCard key={group.id} group={group} currentUserId={user!.id} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Past Groups</h2>
+              <p className="text-sm text-muted-foreground">
+                Archived groups stay here for reference, receipts, and prior settlements.
+              </p>
+            </div>
+            {archivedGroups.length === 0 ? (
+              <Empty>
+                <EmptyTitle>No past groups</EmptyTitle>
+                <EmptyDescription>
+                  Archived groups will appear here when you move them out of your active list.
+                </EmptyDescription>
+              </Empty>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {archivedGroups.map((group) => (
+                  <GroupCard key={group.id} group={group} currentUserId={user!.id} />
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       )}
     </div>

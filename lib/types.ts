@@ -11,6 +11,7 @@ export interface Group {
   description: string | null;
   created_by: string;
   created_at: string;
+  archived_at: string | null;
 }
 
 export interface GroupMember {

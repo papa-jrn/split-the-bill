@@ -40,6 +40,7 @@ interface AddExpenseDialogProps {
   groupId: string;
   members: GroupMemberWithProfile[];
   currentUserId: string;
+  disabled?: boolean;
 }
 
 function getInitialExactSplits(members: GroupMemberWithProfile[]) {
@@ -50,6 +51,7 @@ export function AddExpenseDialog({
   groupId,
   members,
   currentUserId,
+  disabled = false,
 }: AddExpenseDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -234,7 +236,7 @@ export function AddExpenseDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button>
+        <Button disabled={disabled}>
           <Plus className="mr-2 h-4 w-4" />
           Add Expense
         </Button>
