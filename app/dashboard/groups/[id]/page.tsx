@@ -189,7 +189,12 @@ export default async function GroupPage({ params }: GroupPageProps) {
         </TabsContent>
 
         <TabsContent value="balances" className="space-y-4">
-          <GroupBalances expenses={typedExpenses} members={typedMembers} />
+          <GroupBalances
+            expenses={typedExpenses}
+            members={typedMembers}
+            groupId={id}
+            currentUserId={user.id}
+          />
         </TabsContent>
 
         <TabsContent value="members" className="space-y-4">

@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   Card,
   CardContent,
@@ -9,20 +12,22 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
+import { Spinner } from "@/components/ui/spinner";
 import { ArrowRight, TrendingUp, TrendingDown, Scale } from "lucide-react";
 import { formatCurrency } from "@/lib/types";
 import type { Expense, GroupMember, Profile } from "@/lib/types";
 import { getMemberDisplayName } from "@/lib/member-display";
 
 interface ExpenseWithDetails extends Expense {
-  profiles: Profile;
+  profiles?: Profile;
   expense_splits: {
     id: string;
     expense_id: string;
     user_id: string;
     amount_cents: number;
-    profiles: Profile;
+    profiles?: Profile;
   }[];
 }
 
@@ -33,12 +38,14 @@ interface GroupMemberWithProfile extends GroupMember {
 interface GroupBalancesProps {
   expenses: ExpenseWithDetails[];
   members: GroupMemberWithProfile[];
+  groupId: string;
+  currentUserId: string;
 }
 
 interface Balance {
   userId: string;
   name: string;
-  balance: number; // positive = is owed, negative = owes
+  balance: number;
 }
 
 interface Settlement {
@@ -53,56 +60,43 @@ function calculateBalances(
   expenses: ExpenseWithDetails[],
   members: GroupMemberWithProfile[]
 ): Balance[] {
-  // Initialize balances for all members
   const balances: Record<string, number> = {};
-  members.forEach((m) => {
-    balances[m.user_id] = 0;
+  members.forEach((member) => {
+    balances[member.user_id] = 0;
   });
 
-  // Process each expense
   expenses.forEach((expense) => {
-    // Person who paid gets credit for the full amount
     balances[expense.paid_by] = (balances[expense.paid_by] || 0) + expense.amount_cents;
-
-    // Each person in the split owes their share
     expense.expense_splits.forEach((split) => {
       balances[split.user_id] = (balances[split.user_id] || 0) - split.amount_cents;
     });
   });
 
-  // Convert to array with names
-  return members.map((member) => {
-    const name = getMemberDisplayName(member.user_id, member.profiles);
-    return {
-      userId: member.user_id,
-      name,
-      balance: balances[member.user_id] || 0,
-    };
-  });
+  return members.map((member) => ({
+    userId: member.user_id,
+    name: getMemberDisplayName(member.user_id, member.profiles),
+    balance: balances[member.user_id] || 0,
+  }));
 }
 
 function calculateSettlements(balances: Balance[]): Settlement[] {
-  // Separate people who owe money (debtors) from people who are owed (creditors)
   const debtors = balances
-    .filter((b) => b.balance < 0)
-    .map((b) => ({ ...b, amount: Math.abs(b.balance) }))
+    .filter((balance) => balance.balance < 0)
+    .map((balance) => ({ ...balance, amount: Math.abs(balance.balance) }))
     .sort((a, b) => b.amount - a.amount);
 
   const creditors = balances
-    .filter((b) => b.balance > 0)
-    .map((b) => ({ ...b, amount: b.balance }))
+    .filter((balance) => balance.balance > 0)
+    .map((balance) => ({ ...balance, amount: balance.balance }))
     .sort((a, b) => b.amount - a.amount);
 
   const settlements: Settlement[] = [];
+  let debtorIndex = 0;
+  let creditorIndex = 0;
 
-  // Greedy algorithm to minimize transactions
-  let i = 0;
-  let j = 0;
-
-  while (i < debtors.length && j < creditors.length) {
-    const debtor = debtors[i];
-    const creditor = creditors[j];
-
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
     const amount = Math.min(debtor.amount, creditor.amount);
 
     if (amount > 0) {
@@ -118,18 +112,70 @@ function calculateSettlements(balances: Balance[]): Settlement[] {
     debtor.amount -= amount;
     creditor.amount -= amount;
 
-    if (debtor.amount === 0) i++;
-    if (creditor.amount === 0) j++;
+    if (debtor.amount === 0) debtorIndex += 1;
+    if (creditor.amount === 0) creditorIndex += 1;
   }
 
   return settlements;
 }
 
-export function GroupBalances({ expenses, members }: GroupBalancesProps) {
+export function GroupBalances({
+  expenses,
+  members,
+  groupId,
+  currentUserId,
+}: GroupBalancesProps) {
+  const router = useRouter();
+  const [recordingKey, setRecordingKey] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
   const balances = calculateBalances(expenses, members);
   const settlements = calculateSettlements(balances);
+  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount_cents, 0);
 
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount_cents, 0);
+  const handleRecordSettlement = async (settlement: Settlement) => {
+    const settlementKey = `${settlement.from}-${settlement.to}-${settlement.amount}`;
+    setRecordingKey(settlementKey);
+    setError("");
+
+    const supabase = createClient();
+    const today = new Date().toISOString().split("T")[0];
+
+    const { data: expense, error: expenseError } = await supabase
+      .from("expenses")
+      .insert({
+        group_id: groupId,
+        description: `Settlement: ${settlement.fromName} paid ${settlement.toName}`,
+        amount_cents: settlement.amount,
+        paid_by: settlement.from,
+        created_by: currentUserId,
+        expense_date: today,
+      })
+      .select()
+      .single();
+
+    if (expenseError) {
+      setError(expenseError.message);
+      setRecordingKey(null);
+      return;
+    }
+
+    const { error: splitError } = await supabase.from("expense_splits").insert({
+      expense_id: expense.id,
+      user_id: settlement.to,
+      amount_cents: settlement.amount,
+    });
+
+    if (splitError) {
+      await supabase.from("expenses").delete().eq("id", expense.id);
+      setError(splitError.message);
+      setRecordingKey(null);
+      return;
+    }
+
+    setRecordingKey(null);
+    router.refresh();
+  };
 
   if (expenses.length === 0) {
     return (
@@ -144,7 +190,6 @@ export function GroupBalances({ expenses, members }: GroupBalancesProps) {
 
   return (
     <div className="space-y-6">
-      {/* Summary Card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">Summary</CardTitle>
@@ -179,12 +224,12 @@ export function GroupBalances({ expenses, members }: GroupBalancesProps) {
                         Settled
                       </Badge>
                     ) : isPositive ? (
-                      <Badge className="gap-1 bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20">
+                      <Badge className="gap-1 border-green-500/20 bg-green-500/10 text-green-600 hover:bg-green-500/20">
                         <TrendingUp className="h-3 w-3" />
                         Gets back {formatCurrency(balance.balance)}
                       </Badge>
                     ) : (
-                      <Badge className="gap-1 bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20">
+                      <Badge className="gap-1 border-red-500/20 bg-red-500/10 text-red-600 hover:bg-red-500/20">
                         <TrendingDown className="h-3 w-3" />
                         Owes {formatCurrency(Math.abs(balance.balance))}
                       </Badge>
@@ -197,48 +242,68 @@ export function GroupBalances({ expenses, members }: GroupBalancesProps) {
         </CardContent>
       </Card>
 
-      {/* Settlements Card */}
       {settlements.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Suggested Settlements</CardTitle>
+            <CardTitle className="text-lg">Suggested Payments</CardTitle>
             <CardDescription>
-              The simplest way to settle up all debts
+              These are the minimum payments needed to settle all balances.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {settlements.map((settlement, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-3 rounded-lg border p-3"
-                >
-                  <div className="flex items-center gap-2 flex-1">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs bg-red-500/10 text-red-600">
-                        {settlement.fromName.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="font-medium">{settlement.fromName}</span>
+              {settlements.map((settlement) => {
+                const settlementKey = `${settlement.from}-${settlement.to}-${settlement.amount}`;
+                const isRecording = recordingKey === settlementKey;
+
+                return (
+                  <div
+                    key={settlementKey}
+                    className="space-y-3 rounded-lg border p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2 text-sm sm:text-base">
+                        <span className="font-medium">{settlement.fromName}</span>
+                        <span className="text-muted-foreground">should pay</span>
+                        <span className="font-medium">{settlement.toName}</span>
+                        <span className="font-semibold text-foreground">
+                          {formatCurrency(settlement.amount)}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleRecordSettlement(settlement)}
+                        disabled={isRecording}
+                      >
+                        {isRecording && <Spinner className="mr-2" />}
+                        Record as settled
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-3 text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs bg-red-500/10 text-red-600">
+                            {settlement.fromName.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{settlement.fromName}</span>
+                      </div>
+                      <ArrowRight className="h-4 w-4" />
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs bg-green-500/10 text-green-600">
+                            {settlement.toName.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{settlement.toName}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <span className="text-sm">pays</span>
-                    <span className="font-semibold text-foreground">
-                      {formatCurrency(settlement.amount)}
-                    </span>
-                    <ArrowRight className="h-4 w-4" />
-                  </div>
-                  <div className="flex items-center gap-2 flex-1 justify-end">
-                    <span className="font-medium">{settlement.toName}</span>
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs bg-green-500/10 text-green-600">
-                        {settlement.toName.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+            {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           </CardContent>
         </Card>
       )}
@@ -246,7 +311,7 @@ export function GroupBalances({ expenses, members }: GroupBalancesProps) {
       {settlements.length === 0 && expenses.length > 0 && (
         <Card>
           <CardContent className="py-8 text-center">
-            <Scale className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <Scale className="mb-4 mx-auto h-12 w-12 text-muted-foreground" />
             <h3 className="font-semibold">All settled up!</h3>
             <p className="text-sm text-muted-foreground">
               Everyone is even. No payments needed.
