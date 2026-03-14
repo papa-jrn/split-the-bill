@@ -239,15 +239,16 @@ export function AddExpenseDialog({
           Add Expense
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
+      <DialogContent className="max-h-[85vh] max-w-md overflow-hidden p-0 sm:max-h-[90vh]">
+        <form onSubmit={handleSubmit} className="flex max-h-[85vh] flex-col sm:max-h-[90vh]">
+          <DialogHeader className="px-6 pt-6">
             <DialogTitle>Add an expense</DialogTitle>
             <DialogDescription>
               Record a new expense and choose how to split it across the group.
             </DialogDescription>
           </DialogHeader>
-          <FieldGroup className="py-4">
+          <div className="flex-1 overflow-y-auto px-6">
+            <FieldGroup className="py-4">
             <Field>
               <FieldLabel htmlFor="description">Description</FieldLabel>
               <Input
@@ -403,8 +404,9 @@ export function AddExpenseDialog({
               </Field>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </FieldGroup>
-          <DialogFooter>
+            </FieldGroup>
+          </div>
+          <DialogFooter className="border-t px-6 py-4">
             <Button
               type="button"
               variant="outline"
