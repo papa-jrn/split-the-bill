@@ -32,18 +32,18 @@ import { getMemberDisplayName } from "@/lib/member-display";
 import type { Expense, GroupMember, Profile } from "@/lib/types";
 
 interface ExpenseWithDetails extends Expense {
-  profiles: Profile;
+  profiles?: Profile;
   expense_splits: {
     id: string;
     expense_id: string;
     user_id: string;
     amount_cents: number;
-    profiles: Profile;
+    profiles?: Profile;
   }[];
 }
 
 interface GroupMemberWithProfile extends GroupMember {
-  profiles: Profile;
+  profiles?: Profile;
 }
 
 interface ExpenseListProps {

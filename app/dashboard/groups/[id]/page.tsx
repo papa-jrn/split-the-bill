@@ -10,9 +10,10 @@ import { GroupMembers } from "@/components/group-members";
 import { GroupBalances } from "@/components/group-balances";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { GroupArchiveToggle } from "@/components/group-archive-toggle";
+import { GroupDeleteButton } from "@/components/group-delete-button";
 import { GroupMessageBoard } from "@/components/group-message-board";
 import { ArrowLeft } from "lucide-react";
-import type { Group, GroupMember, Expense, GroupMessage, Profile } from "@/lib/types";
+import type { Group, GroupMember, Expense, GroupMessage, GroupPayment, Profile } from "@/lib/types";
 
 interface GroupMemberWithProfile extends GroupMember {
   profiles?: Profile;
@@ -165,6 +166,15 @@ export default async function GroupPage({ params }: GroupPageProps) {
     profiles: messageProfileMap.get(message.user_id),
   })) as GroupMessageWithProfile[];
 
+  const { data: paymentRows } = await supabase
+    .from("group_payments")
+    .select("id, group_id, from_user_id, to_user_id, amount_cents, status, created_by, created_at, paid_marked_at, confirmed_at")
+    .eq("group_id", id)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+
+  const typedPayments = (paymentRows || []) as GroupPayment[];
+
   let invites: { id: string; email: string; created_at: string }[] = [];
   if (isAdmin) {
     const { data } = await supabase
@@ -195,7 +205,12 @@ export default async function GroupPage({ params }: GroupPageProps) {
             <p className="text-muted-foreground">{group.description}</p>
           )}
         </div>
-        {isAdmin && <GroupArchiveToggle groupId={id} isArchived={Boolean(group.archived_at)} />}
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <GroupArchiveToggle groupId={id} isArchived={Boolean(group.archived_at)} />
+            <GroupDeleteButton groupId={id} groupName={group.name} />
+          </div>
+        )}
       </div>
 
       {group.archived_at && (
@@ -238,6 +253,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
           <GroupBalances
             expenses={typedExpenses}
             members={typedMembers}
+            payments={typedPayments}
             groupId={id}
             currentUserId={user.id}
             isArchived={Boolean(group.archived_at)}

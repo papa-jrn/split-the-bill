@@ -40,6 +40,19 @@ export interface GroupMessage {
   profiles?: Profile;
 }
 
+export interface GroupPayment {
+  id: string;
+  group_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  amount_cents: number;
+  status: "pending" | "completed";
+  created_by: string;
+  created_at: string;
+  paid_marked_at: string;
+  confirmed_at: string | null;
+}
+
 export interface Expense {
   id: string;
   group_id: string;

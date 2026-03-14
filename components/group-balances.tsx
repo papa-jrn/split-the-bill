@@ -15,9 +15,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { ArrowRight, TrendingUp, TrendingDown, Scale } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Clock3,
+  Scale,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import { formatCurrency } from "@/lib/types";
-import type { Expense, GroupMember, Profile } from "@/lib/types";
+import type { Expense, GroupMember, GroupPayment, Profile } from "@/lib/types";
 import { getMemberDisplayName } from "@/lib/member-display";
 
 interface ExpenseWithDetails extends Expense {
@@ -38,6 +45,7 @@ interface GroupMemberWithProfile extends GroupMember {
 interface GroupBalancesProps {
   expenses: ExpenseWithDetails[];
   members: GroupMemberWithProfile[];
+  payments: GroupPayment[];
   groupId: string;
   currentUserId: string;
   isArchived?: boolean;
@@ -120,26 +128,36 @@ function calculateSettlements(balances: Balance[]): Settlement[] {
   return settlements;
 }
 
+function getSettlementKey(settlement: Settlement) {
+  return `${settlement.from}-${settlement.to}-${settlement.amount}`;
+}
+
 export function GroupBalances({
   expenses,
   members,
+  payments,
   groupId,
   currentUserId,
   isArchived = false,
 }: GroupBalancesProps) {
   const router = useRouter();
-  const [recordingKey, setRecordingKey] = useState<string | null>(null);
+  const [actionKey, setActionKey] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const balances = calculateBalances(expenses, members);
   const settlements = calculateSettlements(balances);
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount_cents, 0);
 
-  const handleRecordSettlement = async (settlement: Settlement) => {
-    const settlementKey = `${settlement.from}-${settlement.to}-${settlement.amount}`;
-    setRecordingKey(settlementKey);
-    setError("");
+  const findPendingPayment = (settlement: Settlement) =>
+    payments.find(
+      (payment) =>
+        payment.status === "pending" &&
+        payment.from_user_id === settlement.from &&
+        payment.to_user_id === settlement.to &&
+        payment.amount_cents === settlement.amount
+    );
 
+  const createSettlementExpense = async (settlement: Settlement) => {
     const supabase = createClient();
     const today = new Date().toISOString().split("T")[0];
 
@@ -157,9 +175,7 @@ export function GroupBalances({
       .single();
 
     if (expenseError) {
-      setError(expenseError.message);
-      setRecordingKey(null);
-      return;
+      return { error: expenseError.message };
     }
 
     const { error: splitError } = await supabase.from("expense_splits").insert({
@@ -170,12 +186,62 @@ export function GroupBalances({
 
     if (splitError) {
       await supabase.from("expenses").delete().eq("id", expense.id);
-      setError(splitError.message);
-      setRecordingKey(null);
+      return { error: splitError.message };
+    }
+
+    return { error: null as string | null };
+  };
+
+  const handleMarkPaid = async (settlement: Settlement) => {
+    const settlementKey = getSettlementKey(settlement);
+    setActionKey(settlementKey);
+    setError("");
+
+    const supabase = createClient();
+    const { error: paymentError } = await supabase.from("group_payments").insert({
+      group_id: groupId,
+      from_user_id: settlement.from,
+      to_user_id: settlement.to,
+      amount_cents: settlement.amount,
+      status: "pending",
+      created_by: currentUserId,
+    });
+
+    if (paymentError) {
+      setError(paymentError.code === "23505" ? "This payment is already waiting for confirmation." : paymentError.message);
+      setActionKey(null);
       return;
     }
 
-    setRecordingKey(null);
+    setActionKey(null);
+    router.refresh();
+  };
+
+  const handleConfirmPayment = async (settlement: Settlement, paymentId: string) => {
+    const settlementKey = getSettlementKey(settlement);
+    setActionKey(settlementKey);
+    setError("");
+
+    const settlementResult = await createSettlementExpense(settlement);
+    if (settlementResult.error) {
+      setError(settlementResult.error);
+      setActionKey(null);
+      return;
+    }
+
+    const supabase = createClient();
+    const { error: updateError } = await supabase
+      .from("group_payments")
+      .update({ status: "completed", confirmed_at: new Date().toISOString() })
+      .eq("id", paymentId);
+
+    if (updateError) {
+      setError(updateError.message);
+      setActionKey(null);
+      return;
+    }
+
+    setActionKey(null);
     router.refresh();
   };
 
@@ -255,8 +321,11 @@ export function GroupBalances({
           <CardContent>
             <div className="space-y-3">
               {settlements.map((settlement) => {
-                const settlementKey = `${settlement.from}-${settlement.to}-${settlement.amount}`;
-                const isRecording = recordingKey === settlementKey;
+                const settlementKey = getSettlementKey(settlement);
+                const isActing = actionKey === settlementKey;
+                const pendingPayment = findPendingPayment(settlement);
+                const isDebtor = currentUserId === settlement.from;
+                const isRecipient = currentUserId === settlement.to;
 
                 return (
                   <div
@@ -272,15 +341,34 @@ export function GroupBalances({
                           {formatCurrency(settlement.amount)}
                         </span>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => handleRecordSettlement(settlement)}
-                        disabled={isRecording || isArchived}
-                      >
-                        {isRecording && <Spinner className="mr-2" />}
-                        Record as settled
-                      </Button>
+                      {pendingPayment ? (
+                        isRecipient ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => handleConfirmPayment(settlement, pendingPayment.id)}
+                            disabled={isActing || isArchived}
+                          >
+                            {isActing && <Spinner className="mr-2" />}
+                            Confirm payment
+                          </Button>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1 self-start sm:self-auto">
+                            <Clock3 className="h-3 w-3" />
+                            {isDebtor ? "Marked paid" : `Waiting for ${settlement.toName} to confirm`}
+                          </Badge>
+                        )
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleMarkPaid(settlement)}
+                          disabled={isActing || isArchived || !isDebtor}
+                        >
+                          {isActing && <Spinner className="mr-2" />}
+                          {isDebtor ? "Mark as paid" : `Waiting for ${settlement.fromName}`}
+                        </Button>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-muted-foreground">
                       <div className="flex items-center gap-2">
@@ -301,6 +389,14 @@ export function GroupBalances({
                         <span className="text-sm">{settlement.toName}</span>
                       </div>
                     </div>
+                    {pendingPayment && (
+                      <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        {isRecipient
+                          ? `${settlement.fromName} marked this payment as sent. Confirm it once the money arrives.`
+                          : `${settlement.fromName} marked this payment as sent and it is waiting on ${settlement.toName} to confirm.`}
+                      </div>
+                    )}
                   </div>
                 );
               })}
