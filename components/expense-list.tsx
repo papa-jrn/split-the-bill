@@ -26,7 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Trash2 } from "lucide-react";
+import { HandCoins, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/types";
 import { getMemberDisplayName } from "@/lib/member-display";
 import type { Expense, GroupMember, Profile } from "@/lib/types";
@@ -128,6 +128,7 @@ export function ExpenseList({
             const paidByInitials = paidByName.slice(0, 2).toUpperCase();
             const isPaidByCurrentUser = expense.paid_by === currentUserId;
             const canDelete = expense.created_by === currentUserId;
+            const isSettlement = expense.description.startsWith("Settlement:");
 
             const splitNames = expense.expense_splits
               .map((split) => {
@@ -137,23 +138,34 @@ export function ExpenseList({
               .join(", ");
 
             return (
-              <Card key={expense.id}>
+              <Card
+                key={expense.id}
+                className={isSettlement ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/60 dark:bg-emerald-950/20" : undefined}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
                     <Avatar className="h-10 w-10 shrink-0">
-                      <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                        {paidByInitials}
+                      <AvatarFallback
+                        className={isSettlement ? "bg-emerald-100 text-emerald-700 text-sm dark:bg-emerald-900/60 dark:text-emerald-200" : "bg-primary/10 text-primary text-sm"}
+                      >
+                        {isSettlement ? <HandCoins className="h-4 w-4" /> : paidByInitials}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="font-medium">{expense.description}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium">{expense.description}</p>
+                            {isSettlement && (
+                              <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-200">
+                                Settlement
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-sm text-muted-foreground">
-                            {isPaidByCurrentUser ? "You" : paidByName} paid{" "}
-                            <span className="font-medium text-foreground">
-                              {formatCurrency(expense.amount_cents)}
-                            </span>
+                            {isSettlement
+                              ? `${isPaidByCurrentUser ? "You" : paidByName} recorded a settlement for ${formatCurrency(expense.amount_cents)}`
+                              : `${isPaidByCurrentUser ? "You" : paidByName} paid ${formatCurrency(expense.amount_cents)}`}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -198,12 +210,12 @@ export function ExpenseList({
                           )}
                         </div>
                       </div>
-                      <div className="mt-2 flex items-center gap-2 flex-wrap">
-                        <Badge variant="secondary" className="text-xs">
-                          Split {expense.expense_splits.length} ways
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge variant={isSettlement ? "outline" : "secondary"} className="text-xs">
+                          Split {expense.expense_splits.length} {expense.expense_splits.length === 1 ? "way" : "ways"}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
-                          with {splitNames}
+                          {isSettlement ? `Settled with ${splitNames}` : `with ${splitNames}`}
                         </span>
                       </div>
                     </div>
