@@ -24,6 +24,7 @@ scripts/006_fix_profile_visibility.sql
 scripts/007_add_group_messages.sql
 scripts/008_add_group_archiving.sql
 scripts/009_add_group_payments.sql
+scripts/010_seed_realistic_test_data.sql
 ```
 
 4. In Supabase Authentication settings, add this redirect URL:
@@ -37,6 +38,17 @@ http://localhost:3000/auth/callback
 ```bash
 npm run dev
 ```
+
+## Demo seed data
+
+Run `scripts/010_seed_realistic_test_data.sql` in the Supabase SQL Editor after the schema migrations if you want a ready-made dataset for testing balances, settlements, and group flows.
+
+Seeded login accounts:
+
+- `alice@test.com` / `password123`
+- `bob@test.com` / `password123`
+- `carol@test.com` / `password123`
+- `dave@test.com` / `password123`
 
 ## What is configured
 

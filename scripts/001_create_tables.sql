@@ -8,6 +8,10 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "profiles_select_own" on public.profiles;
+drop policy if exists "profiles_insert_own" on public.profiles;
+drop policy if exists "profiles_update_own" on public.profiles;
+
 create policy "profiles_select_own" on public.profiles for select using (auth.uid() = id);
 create policy "profiles_insert_own" on public.profiles for insert with check (auth.uid() = id);
 create policy "profiles_update_own" on public.profiles for update using (auth.uid() = id);
@@ -73,6 +77,11 @@ create table if not exists public.expense_splits (
 alter table public.expense_splits enable row level security;
 
 -- RLS Policies for groups
+drop policy if exists "groups_select_member" on public.groups;
+drop policy if exists "groups_insert_authenticated" on public.groups;
+drop policy if exists "groups_update_admin" on public.groups;
+drop policy if exists "groups_delete_admin" on public.groups;
+
 create policy "groups_select_member" on public.groups for select using (
   id in (select group_id from public.group_members where user_id = auth.uid())
 );
@@ -89,6 +98,10 @@ create policy "groups_delete_admin" on public.groups for delete using (
 );
 
 -- RLS Policies for group_members
+drop policy if exists "group_members_select" on public.group_members;
+drop policy if exists "group_members_insert_admin" on public.group_members;
+drop policy if exists "group_members_delete_admin" on public.group_members;
+
 create policy "group_members_select" on public.group_members for select using (
   group_id in (select group_id from public.group_members where user_id = auth.uid())
 );
@@ -104,6 +117,8 @@ create policy "group_members_delete_admin" on public.group_members for delete us
 );
 
 -- Allow users to see profiles of people in their groups
+drop policy if exists "profiles_select_group_members" on public.profiles;
+
 create policy "profiles_select_group_members" on public.profiles for select using (
   id in (
     select gm2.user_id from public.group_members gm1
@@ -113,6 +128,11 @@ create policy "profiles_select_group_members" on public.profiles for select usin
 );
 
 -- RLS Policies for group_invites
+drop policy if exists "group_invites_select_admin" on public.group_invites;
+drop policy if exists "group_invites_select_invitee" on public.group_invites;
+drop policy if exists "group_invites_insert_admin" on public.group_invites;
+drop policy if exists "group_invites_delete" on public.group_invites;
+
 create policy "group_invites_select_admin" on public.group_invites for select using (
   group_id in (select group_id from public.group_members where user_id = auth.uid() and role = 'admin')
 );
@@ -131,6 +151,11 @@ create policy "group_invites_delete" on public.group_invites for delete using (
 );
 
 -- RLS Policies for expenses
+drop policy if exists "expenses_select_member" on public.expenses;
+drop policy if exists "expenses_insert_member" on public.expenses;
+drop policy if exists "expenses_update_creator" on public.expenses;
+drop policy if exists "expenses_delete_creator" on public.expenses;
+
 create policy "expenses_select_member" on public.expenses for select using (
   group_id in (select group_id from public.group_members where user_id = auth.uid())
 );
@@ -149,6 +174,10 @@ create policy "expenses_delete_creator" on public.expenses for delete using (
 );
 
 -- RLS Policies for expense_splits
+drop policy if exists "expense_splits_select" on public.expense_splits;
+drop policy if exists "expense_splits_insert" on public.expense_splits;
+drop policy if exists "expense_splits_delete" on public.expense_splits;
+
 create policy "expense_splits_select" on public.expense_splits for select using (
   expense_id in (
     select id from public.expenses where group_id in (
